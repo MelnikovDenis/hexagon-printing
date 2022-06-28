@@ -65,15 +65,15 @@ public:
 		head.setPosition(pos.x - (head.getLocalBounds().width / 2), pos.y - (head.getLocalBounds().height / 2));
 	}	
 	void draw(sf::RenderTarget& target, sf::RenderStates states) const {
-		for (auto iter = trackList.begin(); iter != trackList.end(); ++iter) {
+		/*for (auto iter = trackList.begin(); iter != trackList.end(); ++iter) {
 			target.draw(*iter, states);
-		}
-		target.draw(head, states);	
+		}*/		
+		target.draw(head);
 	}
 	float getRadius() {
 		return head.getRadius();
 	}
-	void move(std::list<Vector2f>& points, const float& speed, Clock& clock, std::list<Vector2f>::iterator& nextPoint) {
+	void move(std::list<Vector2f>& points, const float& speed, Clock& clock, std::list<Vector2f>::iterator& nextPoint, ConvexShape& cutout, bool& needStop) {
 		if (nextPoint != points.end()) {
 			std::cout << getCenter().x << ':' << getCenter().y << '\n';
 			if (trackList.empty() || isFinished) {
@@ -93,7 +93,11 @@ public:
 				clock.restart();
 				
 				Vector2f motionVec(unitVec.x * (speed / 1000 * time), unitVec.y * (speed / 1000 * time));
-				setCentralPos(Vector2f(getCenter().x + motionVec.x, getCenter().y + motionVec.y));				
+				setCentralPos(Vector2f(getCenter().x + motionVec.x, getCenter().y + motionVec.y));
+				if (cutout.getGlobalBounds().contains(getCenter())) {
+					needStop = true;
+				}
+				else needStop = false;
 			}
 			else {
 				std::cout << "\t“Œ◊ ¿ —Ã≈Õ€ Õ¿œ–¿¬À≈Õ»ﬂ\n";
@@ -105,6 +109,20 @@ public:
 			}
 		}
 	}
+	void makePath(std::list<Vector2f>& points, const float& shape_radius) {
+		float curr_radius = head.getRadius() * 2.f;
+		int angles = 6;
+
+		while (curr_radius < shape_radius) {
+			for (int i = 0; i < angles - 1; ++i) {
+				points.push_back(Vector2f(300.f + curr_radius * cosf(2.f * i * M_PI / angles), 300.f + curr_radius * sinf(2.f * i * M_PI / angles)));
+			}
+			if (curr_radius + head.getRadius() * 2.f >= shape_radius)
+				points.push_back(Vector2f(300.f + 2.f + curr_radius * cosf(2.f * (angles - 1) * M_PI / angles), 300.f + curr_radius * sinf(2.f * (angles - 1) * M_PI / angles)));
+			else points.push_back(Vector2f(300.f + head.getRadius() * 2.f + curr_radius * cosf(2.f * (angles - 1) * M_PI / angles), 300.f + curr_radius * sinf(2.f * (angles - 1) * M_PI / angles)));
+			curr_radius += head.getRadius() * 2.f;
+		}
+	}
 };
 
 
@@ -114,27 +132,22 @@ int main() {
 	settings.antialiasingLevel = 8;
 	RenderWindow window(VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), "Practice", sf::Style::Close | sf::Style::Titlebar, settings);
 	
-	Printhead head(Vector2f(300.f, 300.f), 5.f);
-	Clock clock;
-	float curr_radius = head.getRadius() * 2.f;
-	float shape_radius = 40.f;
-	int angles = 6;
+	Printhead head(Vector2f(300.f, 300.f), 1.f);
+	Clock clock;	
 	std::list<Vector2f> points;
-	
-	while (curr_radius < shape_radius) {
-		for (int i = 0; i < angles - 1; ++i) {
-			points.push_back(Vector2f(300.f + curr_radius * cosf(2.f * i * M_PI / angles), 300.f + curr_radius * sinf(2.f * i * M_PI / angles)));
-		}
-		if(curr_radius + head.getRadius() * 2.f >= shape_radius)
-			points.push_back(Vector2f(300.f  + 2.f + curr_radius * cosf(2.f * (angles - 1) * M_PI / angles), 300.f + curr_radius * sinf(2.f * (angles - 1) * M_PI / angles)));
-		else points.push_back(Vector2f(300.f + head.getRadius() * 2.f + curr_radius * cosf(2.f * (angles - 1) * M_PI / angles), 300.f + curr_radius * sinf(2.f * (angles - 1) * M_PI / angles)));
-		curr_radius += head.getRadius() * 2.f;		
-	}
-	
-
-
+	head.makePath(points, 40);
 	auto iter = points.begin();
+	
 
+
+	sf::ConvexShape polygon;
+	polygon.setPointCount(4);
+	polygon.setPoint(3, sf::Vector2f(320, 300));
+	polygon.setPoint(2, sf::Vector2f(320, 320));
+	polygon.setPoint(0, sf::Vector2f(280, 300));
+	polygon.setPoint(1, sf::Vector2f(280, 320));
+	polygon.setFillColor(Color::Cyan);
+	bool needStop = false;
 
 	//„Î‡‚Ì˚È ˆËÍÎ ÓÚËÒÓ‚ÍË ÓÍÌ‡
 	while (window.isOpen()) {
@@ -144,10 +157,11 @@ int main() {
 			if (event.type == Event::Closed) window.close();
 		}
 		
-		head.move(points, 200.f, clock, iter);
+		head.move(points, 100.f, clock, iter, polygon, needStop);
 
-		window.clear();
-		window.draw(head);
+		//window.clear();
+		//window.draw(polygon);
+		 if(!needStop) window.draw(head);
 		window.display();
 	}
 	return 0;
