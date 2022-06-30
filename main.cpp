@@ -34,7 +34,7 @@ public:
 
 
 class Printhead : public Drawable {
-public:
+private:
 	CircleShape head; 
 	std::list<Track> trackList; //список, хранящий в себе линии, по которым двигался экструктор
 	
@@ -70,7 +70,16 @@ public:
 	static Vector2f getVector(const Vector2f& startPoint, const Vector2f& endPoint) {
 		return Vector2f(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
 	}
-	
+	//первый сосед точки в фигуре (его номер)
+	static int getFirstNeigh(const ConvexShape& shape, int num) {
+		if (num == 0)  return shape.getPointCount() - 1;
+		else return num - 1;
+	}
+	//второй сосед точки в фигуре (его номер)
+	static int getSecondNeigh(const ConvexShape& shape, const int& num) {
+		if (num == shape.getPointCount() - 1)  return 0;
+		else return num + 1;
+	}
 public:
 	Printhead(const Vector2f& startPoint, const float& radius) {
 		head.setRadius(radius);
@@ -93,9 +102,8 @@ public:
 	float getRadius() {
 		return head.getRadius();
 	}
-	void move(std::list<Vector2f>& points, const float& speed, Clock& clock, std::list<Vector2f>::iterator& nextPoint){//, ConvexShape& cutout, bool& needStop) {
+	void move(std::list<Vector2f>& points, const float& speed, Clock& clock, std::list<Vector2f>::iterator& nextPoint){
 		if (nextPoint != points.end()) {
-			//std::cout << getCenter().x << ':' << getCenter().y << '\n';
 			if (trackList.empty() || isFinished) {
 				trackList.push_back(Track(getCenter(), getCenter()));
 			}
@@ -115,13 +123,8 @@ public:
 				
 				Vector2f motionVec(unitVec.x * (speed / 1000 * time), unitVec.y * (speed / 1000 * time));
 				setCentralPos(Vector2f(getCenter().x + motionVec.x, getCenter().y + motionVec.y));
-				/*if (cutout.getGlobalBounds().contains(getCenter())) {
-					needStop = true;
-				}
-				else needStop = false;*/
 			}
 			else {
-				//std::cout << "\tТОЧКА СМЕНЫ НАПРАВЛЕНИЯ\n";
 				trackList.back().setEndPoint(*nextPoint);
 				setCentralPos(*nextPoint);
 				++nextPoint;
@@ -130,6 +133,7 @@ public:
 			}
 		}
 	}
+	//получить путь заполнения спиралью правильного шестиугольника
 	void makeSpiralPath(std::list<Vector2f>& points, const float& shape_radius) {
 		float curr_radius = head.getRadius() * 2.f;
 		int angles = 6;
@@ -144,12 +148,71 @@ public:
 			curr_radius += head.getRadius() * 2.f;
 		}
 	}
+	//получить путь заполнения змейкой любого выпуклого многоугольника
+	void makeSnakePath(std::list<Vector2f>& points, const ConvexShape& shape) {
+		float diam = head.getRadius() * 2.f;
+		int p1 = getHighest(shape);
+		int p2 = p1;
+		float curr_height = shape.getPoint(p1).y + diam;	
+		Vector2f inters_p1 = shape.getPoint(p1), inters_p2 = shape.getPoint(p1);
+		std::cout << "Высочайшая точка: " << shape.getPoint(p1).x << "; " << shape.getPoint(p1).y << '\n';
+		std::cout << "Нижайшая точка: " << shape.getPoint(getLowest(shape)).x << "; " << shape.getPoint(getLowest(shape)).y << '\n';
+		for (int i = 0; curr_height < shape.getPoint(getLowest(shape)).y; ++i, curr_height += diam) {
+			//std::cout << "\ncurr_height: " << curr_height << '\n';			
+			Vector3f horizontal = getHorizontal(curr_height);
+			//std::cout << "horizontal: " << horizontal.x << "; " << horizontal.y << "; " << horizontal.z << '\n';
+			
+			Vector3f line1 = getEquation(shape.getPoint(p1), shape.getPoint(getFirstNeigh(shape, p1)));			
+			inters_p1 = getIntersection(line1, horizontal);
+			if (inters_p1.y >= shape.getPoint(getFirstNeigh(shape, p1)).y) {
+				//std::cout << "------------СМЕНА ТОЧКИ1----------------\n";
+				p1 = getFirstNeigh(shape, p1);
+				line1 = getEquation(shape.getPoint(p1), shape.getPoint(getFirstNeigh(shape, p1)));
+				inters_p1 = getIntersection(line1, horizontal);
+			}
+			if (inters_p1 == NOVALUE) {
+				//std::cout << "------------СМЕНА ТОЧКИ1/1----------------\n";
+				p1 = getFirstNeigh(shape, p1);
+				line1 = getEquation(shape.getPoint(p1), shape.getPoint(getFirstNeigh(shape, p1)));
+				
+				inters_p1 = getIntersection(line1, horizontal);
+			}
+			//std::cout << "Первая линия: " << line1.x << "; " << line1.y << "; " << line1.z << '\n';
+			Vector3f line2 = getEquation(shape.getPoint(p2), shape.getPoint(getSecondNeigh(shape, p2)));
+			inters_p2 = getIntersection(line2, horizontal);
+
+			if (inters_p2.y >= shape.getPoint(getSecondNeigh(shape, p2)).y) {
+				//std::cout << "------------СМЕНА ТОЧКИ2----------------\n";
+				p2 = getSecondNeigh(shape, p2);
+				line2 = getEquation(shape.getPoint(p2), shape.getPoint(getSecondNeigh(shape, p2)));
+				inters_p2 = getIntersection(line2, horizontal);
+			}
+			if (inters_p2 == NOVALUE) {
+				//std::cout << "------------СМЕНА ТОЧКИ2/2----------------\n";
+				p2 = getSecondNeigh(shape, p2);
+				line2 = getEquation(shape.getPoint(p2), shape.getPoint(getSecondNeigh(shape, p2)));
+				inters_p2 = getIntersection(line2, horizontal);
+			}
+			//std::cout << "p1: " << p1 << "\tp2: " << p2 << '\n';
+			if (i % 2 == 0) {
+				points.push_back(inters_p2);
+				points.push_back(inters_p1);
+			}
+			else {
+				points.push_back(inters_p1);
+				points.push_back(inters_p2);
+			}	
+			//std::cout << "inters_p1: " << inters_p1.x << "; " << inters_p1.y << '\n';
+			//std::cout << "inters_p2: " << inters_p2.x << "; " << inters_p2.x << '\n';
+		}
+		points.push_back(shape.getPoint(getLowest(shape)));
+	}
 	//самая низкая точка данной фигуры
 	static int getLowest(const ConvexShape& shape) {
 		Vector2f lowest = Vector2f(FLT_MIN, FLT_MIN);
 		int index = -1;
 		for (int i = 0; i < shape.getPointCount(); ++i) {
-			if (lowest.y < shape.getPoint(i).y) { 
+			if (lowest.y < shape.getPoint(i).y) {
 				lowest = shape.getPoint(i);
 				index = i;
 			};
@@ -168,65 +231,6 @@ public:
 		}
 		return index;
 	}
-	//первый сосед точки в фигуре (его номер)
-	static int getFirstNeigh(const ConvexShape& shape, int num) {
-		if (num == 0)  return shape.getPointCount() - 1;
-		else return num - 1;
-	}
-	//второй сосед точки в фигуре (его номер)
-	static int getSecondNeigh(const ConvexShape& shape, const int& num) {	
-		if (num == shape.getPointCount() - 1)  return 0;
-		else return num + 1;
-	}
-	 
-	void makeSnakePath(std::list<Vector2f>& points, const ConvexShape& shape) {
-		float diam = head.getRadius() * 2.f;
-		int p1 = getHighest(shape);
-		int p2 = p1;
-		std::cout << "Высочайшая точка: " << shape.getPoint(p1).x << "; " << shape.getPoint(p1).y << '\n';
-		std::cout << "Нижайшая точка: " << shape.getPoint(getLowest(shape)).x << "; " << shape.getPoint(getLowest(shape)).y << '\n';
-		float curr_height = shape.getPoint(p1).y + diam;	
-		for (int i = 0; curr_height < shape.getPoint(getLowest(shape)).y; ++i, curr_height += diam) {
-			std::cout << "curr_height: " << curr_height << '\n';
-			Vector3f horizontal = getHorizontal(curr_height);
-			std::cout << "horizontal: " << horizontal.x << "; " << horizontal.y << "; " << horizontal.z << '\n';
-
-			Vector3f line1 = getEquation(shape.getPoint(p1), shape.getPoint(getFirstNeigh(shape, p1)));			
-			Vector2f inters_p1 = getIntersection(line1, horizontal);
-
-			std::cout << "inters_p1: " << inters_p1.x << "; " << inters_p1.y << '\n';
-			if (inters_p1 == NOVALUE || inters_p1.y >= shape.getPoint(getFirstNeigh(shape, p1)).y) {
-				std::cout << "------------СМЕНА ТОЧКИ1----------------\n";
-				p1 = getFirstNeigh(shape, p1);
-				Vector3f line1 = getEquation(shape.getPoint(p1), shape.getPoint(getFirstNeigh(shape, p1)));
-				Vector2f inters_p1 = getIntersection(line1, horizontal);
-			}
-			std::cout << "Первая линия: " << line1.x << "; " << line1.y << "; " << line1.z << '\n';
-
-
-
-			Vector3f line2 = getEquation(shape.getPoint(p2), shape.getPoint(getSecondNeigh(shape, p2)));
-			Vector2f inters_p2 = getIntersection(line2, horizontal);
-
-			std::cout << "inters_p2: " << inters_p2.x << "; " << inters_p2.x << '\n';
-			if (inters_p2 == NOVALUE || inters_p2.y >= shape.getPoint(getSecondNeigh(shape, p2)).y) {
-				std::cout << "------------СМЕНА ТОЧКИ2----------------\n";
-				p2 = getSecondNeigh(shape, p2);
-				Vector3f line2 = getEquation(shape.getPoint(p2), shape.getPoint(getSecondNeigh(shape, p2)));
-				Vector2f inters_p2 = getIntersection(line2, horizontal);
-			}
-			std::cout << "Вторая линия: " << line2.x << "; " << line2.y << "; " << line2.z << '\n';
-
-
-
-			points.push_back(inters_p2);
-			points.push_back(inters_p1);			
-			std::cout << "Первая точка: " << inters_p1.x << "; " << inters_p1.y << "\tВторая точка: " << inters_p2.x << "; " << inters_p2.y << "\n\n";
-
-			
-		}
-
-	}
 };
 	
 
@@ -236,28 +240,25 @@ int main() {
 	settings.antialiasingLevel = 8;
 	RenderWindow window(VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), "Practice", sf::Style::Close | sf::Style::Titlebar, settings);
 	
-	Printhead head(Vector2f(326.f, 326.f), 5.f);
+	
 	Clock clock;	
 	std::list<Vector2f> points;
-	//head.makeSpiralPath(points, 40);
-	
-	
-	
-
-
+	std::cout << "Введите радиус следа, оставляемого экструдером: "; float radius; std::cin >> radius;
+	std::cout << "Введите кол-во вершин фигуры: "; int vertices; std::cin >> vertices;
 	sf::ConvexShape polygon;
-	polygon.setPointCount(5);	
-	std::cout << "0 точка фигуры: 230; 300\n1 точка фигуры: 330; 200\n2 точка фигуры: 300; 400\n\n";
-	polygon.setPoint(0, sf::Vector2f(377, 552));
-	polygon.setPoint(1, sf::Vector2f(285, 450));
-	polygon.setPoint(2, sf::Vector2f(326, 326));
-	polygon.setPoint(3, sf::Vector2f(500, 354));
-	polygon.setPoint(4, sf::Vector2f(527, 472));
-	
+	polygon.setPointCount(vertices);
+	Vector2f vertex;
+	for (int i = 0; i < vertices; ++i) {
+		std::cout << "Введите x координату вершины [" << i + 1 << "]: ";
+		std::cin >> vertex.x;
+		std::cout << "Введите y координату вершины [" << i + 1 << "]: ";
+		std::cin >> vertex.y;
+		polygon.setPoint(i, vertex);
+	}
+	Printhead head(polygon.getPoint(Printhead::getHighest(polygon)), radius);
 	polygon.setFillColor(Color::Yellow);
 	polygon.setOutlineColor(Color::Green);
 	polygon.setOutlineThickness(2.f);
-	bool needStop = false;
 	head.makeSnakePath(points, polygon);
 	clock.restart();
 	auto iter = points.begin();
@@ -269,22 +270,37 @@ int main() {
 			if (event.type == Event::Closed) window.close();
 		}
 		
-		head.move(points, 800.f, clock, iter);//, polygon, needStop);
+		head.move(points, 800.f, clock, iter);
 
 		window.clear();
 		window.draw(polygon);
-		 if(!needStop) window.draw(head);
+		window.draw(head);
 		window.display();
 	}
-	
-	/*Vector2f C = sf::Vector2f(330, 200);
-	Vector2f A = sf::Vector2f(230, 300);
-	Vector2f B = sf::Vector2f(300, 400);
-	Vector3f CA = Printhead::getEquation(C, A);
-	std::cout << "CA: " << CA.x << "; " << CA.y << "; " << CA.z << '\n';
-	Vector3f AB = Printhead::getEquation(A, B);
-	std::cout << "AB: " << AB.x << "; " << AB.y << "; " << AB.z << '\n';
-	Vector3f CB = Printhead::getEquation(C, B);
-	std::cout << "CB: " << CB.x << "; " << CB.y << "; " << CB.z << '\n';*/
 	return 0;
 }
+//входные данные для тестов
+
+/*2
+5
+200
+400
+140
+333
+200
+333
+200
+265
+300
+341*/
+
+/*2
+4
+200
+350
+200
+250
+350
+250
+350
+350*/
