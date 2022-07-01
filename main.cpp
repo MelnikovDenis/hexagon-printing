@@ -83,7 +83,7 @@ private:
 public:
 	Printhead(const Vector2f& startPoint, const float& radius) {
 		head.setRadius(radius);
-		head.setFillColor(Color::Yellow);
+		head.setFillColor(Color::Magenta);
 		setCentralPos(startPoint);
 	}
 	Vector2f getCenter() const {
@@ -94,15 +94,15 @@ public:
 		head.setPosition(pos.x - (head.getLocalBounds().width / 2), pos.y - (head.getLocalBounds().height / 2));
 	}	
 	void draw(sf::RenderTarget& target, sf::RenderStates states) const {
-		for (auto iter = trackList.begin(); iter != trackList.end(); ++iter) {
+		/*for (auto iter = trackList.begin(); iter != trackList.end(); ++iter) {
 			target.draw(*iter, states);
-		}		
+		}	*/	
 		target.draw(head);
 	}
 	float getRadius() {
 		return head.getRadius();
 	}
-	void move(std::list<Vector2f>& points, const float& speed, Clock& clock, std::list<Vector2f>::iterator& nextPoint){
+	void move(std::list<Vector2f>& points, const float& speed, Clock& clock, std::list<Vector2f>::iterator& nextPoint, ConvexShape& cutout, bool& needStop){
 		if (nextPoint != points.end()) {
 			if (trackList.empty() || isFinished) {
 				trackList.push_back(Track(getCenter(), getCenter()));
@@ -123,6 +123,10 @@ public:
 				
 				Vector2f motionVec(unitVec.x * (speed / 1000 * time), unitVec.y * (speed / 1000 * time));
 				setCentralPos(Vector2f(getCenter().x + motionVec.x, getCenter().y + motionVec.y));
+				if (cutout.getGlobalBounds().contains(getCenter())) {
+					needStop = true;
+				}
+				else needStop = false;
 			}
 			else {
 				trackList.back().setEndPoint(*nextPoint);
@@ -244,13 +248,23 @@ int main() {
 		std::cin >> vertex.y;
 		polygon.setPoint(i, vertex);
 	}
+	sf::ConvexShape cutout;
+	cutout.setPointCount(4);
+	for (int i = 0; i < 4; ++i) {
+		std::cout << "¬ведите x координату вершины [" << i + 1 << "] пр€моугольника выреза: ";
+		std::cin >> vertex.x;
+		std::cout << "¬ведите y координату вершины [" << i + 1 << "] пр€моугольника выреза: ";
+		std::cin >> vertex.y;
+		cutout.setPoint(i, vertex);
+	}
 	Printhead head(polygon.getPoint(Printhead::getHighest(polygon)), radius);
-	polygon.setFillColor(Color::Yellow);
+	polygon.setFillColor(Color(255, 255, 0, 0));
 	polygon.setOutlineColor(Color::Green);
 	polygon.setOutlineThickness(2.f);
 	head.makeSnakePath(points, polygon);
 	clock.restart();
 	auto iter = points.begin();
+	bool needStop = false;
 	//главный цикл отрисовки окна
 	while (window.isOpen()) {
 		Event event;	
@@ -259,18 +273,18 @@ int main() {
 			if (event.type == Event::Closed) window.close();
 		}
 		
-		head.move(points, speed, clock, iter);
+		head.move(points, speed, clock, iter, cutout, needStop);
 
-		window.clear();
+		//window.clear();
 		window.draw(polygon);
-		window.draw(head);
+		if(!needStop) window.draw(head);
 		window.display();
 	}
 	return 0;
 }
 //входные данные дл€ тестов
 
-/*2
+/*1
 100
 5
 200
@@ -282,10 +296,18 @@ int main() {
 200
 265
 300
-341*/
+341
+240
+320
+300
+320
+300
+280
+240
+280*/
 
-/*2
-100
+/*1
+400
 4
 200
 350
@@ -294,4 +316,12 @@ int main() {
 350
 250
 350
-350*/
+350
+240
+320
+300
+320
+300
+280
+240
+280*/
